@@ -1,0 +1,20 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+
+<defs>
+<linearGradient id="nova45" x1="0%" y1="0%" x2="100%" y2="100%">
+  <stop offset="0%" stop-color="#C6A7FF"/>
+  <stop offset="100%" stop-color="#6C4DFF"/>
+</linearGradient>
+</defs>
+
+<rect width="128" height="128" rx="26" fill="#0F1117"/>
+
+<circle cx="64" cy="64" r="48"
+stroke="url(#nova45)"
+stroke-width="6"
+fill="none"/>
+
+<polygon points="50,40 92,64 50,88"
+fill="url(#nova45)"/>
+
+</svg>

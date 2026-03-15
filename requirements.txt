@@ -1,0 +1,9 @@
+PyQt6>=6.7
+PyQt6-WebEngine>=6.7
+python-vlc>=3.0.20
+requests>=2.31
+guessit>=3.8
+colorama>=0.4.6
+pydantic>=2.6
+# Optional torrent support (platform-dependent wheels):
+python-libtorrent
