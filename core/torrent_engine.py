@@ -14,6 +14,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+from config.config import TORRENTS_CONFIG
 from utils.logger import get_logger
 
 log = get_logger("torrent_engine")
@@ -91,10 +92,20 @@ class TorrentEngine(QObject):
         Path(save_path).mkdir(parents=True, exist_ok=True)
 
         self._session = lt.session()
-        self._session.apply_settings({
-            "listen_interfaces": "0.0.0.0:6881,[::]:6881",
-            "alert_mask": lt.alert.category_t.all_categories,
-        })
+        session_cfg = self._load_session_config()
+        session_cfg["alert_mask"] = lt.alert.category_t.all_categories
+        self._session.apply_settings(session_cfg)
+
+        # Add DHT routers explicitly for libtorrent builds that ignore
+        # the dht_bootstrap_nodes setting key
+        for node in session_cfg.get("dht_bootstrap_nodes", "").split(","):
+            node = node.strip()
+            if ":" in node:
+                host, _, port_str = node.rpartition(":")
+                try:
+                    self._session.add_dht_router(host, int(port_str))
+                except Exception:
+                    pass
 
         TorrentEngine._LT_STATE = {
             lt.torrent_status.checking_files:       "checking",
@@ -149,14 +160,6 @@ class TorrentEngine(QObject):
         if not _LT_OK:
             log.warning("libtorrent unavailable – cannot add torrent file")
             return None
-
-    def set_save_path(self, save_path: str) -> None:
-        """Update default save path for newly added torrents."""
-        self._save_path = save_path
-        try:
-            Path(save_path).mkdir(parents=True, exist_ok=True)
-        except Exception:
-            log.exception("Failed to create download directory: %s", save_path)
         try:
             info   = lt.torrent_info(filepath)
             params = lt.add_torrent_params()
@@ -181,6 +184,14 @@ class TorrentEngine(QObject):
         except Exception:
             log.exception("Failed to add torrent file: %s", filepath)
             return None
+
+    def set_save_path(self, save_path: str) -> None:
+        """Update default save path for newly added torrents."""
+        self._save_path = save_path
+        try:
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            log.exception("Failed to create download directory: %s", save_path)
 
     def pause(self, info_hash: str) -> None:
         """User-initiated pause.  Records intent so _poll won't auto-resume."""
@@ -231,6 +242,17 @@ class TorrentEngine(QObject):
         self._session.pause()
         self._save_history()
         log.info("TorrentEngine shut down")
+
+    # ── Session config ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _load_session_config() -> dict:
+        """Load session settings from config/torrents.json."""
+        try:
+            return json.loads(TORRENTS_CONFIG.read_text())
+        except Exception:
+            log.exception("Failed to load %s — no session settings applied", TORRENTS_CONFIG)
+            return {}
 
     # ── History persistence ────────────────────────────────────────────────────
 
