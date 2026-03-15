@@ -387,6 +387,7 @@ class DownloadItemWidget(QFrame):
             self._pause_btn.setVisible(False)
             self._detail.setVisible(False)
             self._expanded = False
+            self._progress.setVisible(False)
 
             self._action_btn.setIcon(trash_icon)
             self._action_btn.setToolTip("Delete file…")
@@ -396,6 +397,7 @@ class DownloadItemWidget(QFrame):
 
         else:
             self._pause_btn.setVisible(True)
+            self._progress.setVisible(True)
 
             if self._paused:
                 self._pause_btn.setIcon(play_icon)
@@ -415,6 +417,8 @@ class DownloadItemWidget(QFrame):
                     f"{pct}%  ↓ {_fmt_speed(state.download_rate)}"
                     f"  ↑ {_fmt_speed(state.upload_rate)}"
                 )
+            elif state.status == "paused" and state.progress < 1.0:
+                self._status_lbl.setText("✕ Stopped")
             else:
                 self._status_lbl.setText(_STATUS_TEXT.get(state.status, state.status))
 

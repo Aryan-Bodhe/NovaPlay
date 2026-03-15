@@ -2,11 +2,11 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QStackedWidget,
-    QStatusBar, QSplitter, QFrame, QPushButton, QMenu,
+    QStatusBar, QSplitter, QFrame, QPushButton,
     QApplication, QTabBar,
 )
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QAction, QKeySequence, QShortcut
+from PyQt6.QtCore import Qt, QEvent, pyqtSlot
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 from config.config import SETTINGS_FILE
 from models.settings_manager import SettingsManager
@@ -14,8 +14,9 @@ from interface.file_explorer import FileExplorerPanel
 from interface.player_widget import PlayerWidget
 from interface.browser_panel import BrowserPanel
 from interface.downloads_panel import DownloadsPanel
+from interface.settings_dialog import SettingsDialog
 from interface.styles import get_theme
-from interface.icon_store import settings_icon, menu_icon, download_icon, ICON_SIZE
+from interface.icon_store import settings_icon, menu_icon, download_icon, ICON_SIZE_LARGE
 from core.torrent_engine import TorrentEngine
 from utils.logger import get_logger
 
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._connect_signals()
         self._apply_settings()
+        QApplication.instance().installEventFilter(self)
         log.info("NovaPlay started")
 
     # ── Build ──────────────────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ class MainWindow(QMainWindow):
         def _ab_btn(icon, tip):
             b = QPushButton()
             b.setIcon(icon)
-            b.setIconSize(ICON_SIZE)
+            b.setIconSize(ICON_SIZE_LARGE)
             b.setObjectName("icon_btn")
             b.setFixedSize(32, 32)
             b.setToolTip(tip)
@@ -111,7 +113,7 @@ class MainWindow(QMainWindow):
         ab_layout.addStretch()
 
         self._settings_btn = _ab_btn(settings_icon, "Settings")
-        self._settings_btn.clicked.connect(self._show_settings_menu)
+        self._settings_btn.clicked.connect(self._open_settings_dialog)
         ab_layout.addWidget(
             self._settings_btn,
             alignment=Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
@@ -156,15 +158,23 @@ class MainWindow(QMainWindow):
         self._splitter.setStretchFactor(1, 1)
 
         # Keyboard shortcuts
+        # Ctrl+B works window-wide (toggles the sidebar)
         QShortcut(QKeySequence("Ctrl+B"), self).activated.connect(
             lambda: self._toggle_panel(0)
         )
-        QShortcut(QKeySequence("Ctrl+T"), self).activated.connect(
-            self._new_browser_tab
-        )
-        QShortcut(QKeySequence("Ctrl+W"), self).activated.connect(
-            lambda: self._close_tab
-        )
+        # Ctrl+T / Ctrl+W / Ctrl+R only fire when focus is inside the tab area
+        QShortcut(
+            QKeySequence("Ctrl+T"), self._tabs,
+            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        ).activated.connect(self._new_browser_tab)
+        QShortcut(
+            QKeySequence("Ctrl+W"), self._tabs,
+            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        ).activated.connect(self._close_tab)
+        QShortcut(
+            QKeySequence("Ctrl+R"), self._tabs,
+            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        ).activated.connect(self._refresh_current_tab)
 
         # Player tab (no close button)
         self._player = PlayerWidget(volume=self._settings.last_volume)
@@ -235,6 +245,9 @@ class MainWindow(QMainWindow):
     def _on_current_changed(self, idx: int) -> None:
         if idx == self._plus_tab_idx:
             self._new_browser_tab()
+        elif idx == PLAYER_TAB_INDEX:
+            # Ensure the player gets keyboard focus immediately
+            self._player.setFocus()
 
     def _new_browser_tab(self) -> None:
         settings = self._settings_mgr.load()
@@ -295,6 +308,14 @@ class MainWindow(QMainWindow):
         self._tabs.setCurrentIndex(max(0, self._tabs.currentIndex() - 1))
         log.debug("Closed tab at index %d (+ is now %d)", index, self._plus_tab_idx)
 
+    def _refresh_current_tab(self) -> None:
+        index = self._tabs.currentIndex()
+        if index == PLAYER_TAB_INDEX or index == self._plus_tab_idx:
+            return
+        widget = self._tabs.widget(index)
+        if isinstance(widget, BrowserPanel):
+            widget.reload()
+
     # ── Torrent / magnet ───────────────────────────────────────────────────────
 
     @pyqtSlot(str)
@@ -308,28 +329,44 @@ class MainWindow(QMainWindow):
 
     # ── Settings / theme ───────────────────────────────────────────────────────
 
-    def _show_settings_menu(self) -> None:
-        menu = QMenu(self)
-        theme_menu   = menu.addMenu("Theme")
-        theme_labels = {"purple": "Purple Dark", "vscode": "VS Code Dark"}
-        current      = self._settings_mgr.load().theme
+    def _open_settings_dialog(self) -> None:
+        current = self._settings_mgr.load()
+        dlg = SettingsDialog(
+            theme=current.theme,
+            download_dir=current.download_dir,
+            watch_dirs=current.watch_dirs,
+            parent=self,
+        )
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
 
-        for key, label in theme_labels.items():
-            action = QAction(label, self)
-            action.setCheckable(True)
-            action.setChecked(key == current)
-            action.triggered.connect(lambda checked, k=key: self._set_theme(k))
-            theme_menu.addAction(action)
+        new_theme = dlg.selected_theme()
+        new_download_dir = dlg.selected_download_dir()
+        new_watch_dirs = dlg.selected_watch_dirs()
 
-        menu.addSeparator()
-        settings   = self._settings_mgr.load()
-        dl_info    = QAction(f"Downloads → {settings.download_dir}", self)
-        dl_info.setEnabled(False)
-        menu.addAction(dl_info)
+        settings = self._settings_mgr.load()
+        theme_changed = settings.theme != new_theme
+        download_dir_changed = settings.download_dir != new_download_dir
+        watch_dirs_changed = settings.watch_dirs != new_watch_dirs
 
-        pos = self._settings_btn.mapToGlobal(self._settings_btn.rect().topRight())
-        pos.setY(pos.y() - menu.sizeHint().height())
-        menu.exec(pos)
+        settings.theme = new_theme
+        settings.download_dir = new_download_dir
+        settings.watch_dirs = new_watch_dirs
+        self._settings_mgr.save(settings)
+        self._settings = settings
+
+        if theme_changed:
+            QApplication.instance().setStyleSheet(get_theme(new_theme))
+            self._statusbar.showMessage(f"Theme: {new_theme}", 2500)
+
+        if download_dir_changed:
+            self._engine.set_save_path(new_download_dir)
+            self._downloads_panel.refresh()
+            self._statusbar.showMessage(f"Download folder: {new_download_dir}", 3000)
+
+        if watch_dirs_changed:
+            self._explorer.set_watch_dirs(new_watch_dirs)
+            self._statusbar.showMessage("Watch directories updated", 2500)
 
     def _set_theme(self, name: str) -> None:
         QApplication.instance().setStyleSheet(get_theme(name))
@@ -346,6 +383,7 @@ class MainWindow(QMainWindow):
     def _on_file_selected(self, path: Path) -> None:
         self._tabs.setCurrentIndex(PLAYER_TAB_INDEX)
         self._player.play(path)
+        self._player.setFocus()
         self._statusbar.showMessage(f"Playing: {path.name}", 5000)
 
     @pyqtSlot(list)
@@ -354,9 +392,33 @@ class MainWindow(QMainWindow):
         settings.watch_dirs = dirs
         self._settings_mgr.save(settings)
 
+    # ── Global key intercept ───────────────────────────────────────────────────
+
+    def eventFilter(self, obj, event) -> bool:
+        """Route player keyboard shortcuts regardless of which widget has focus."""
+        if event.type() == QEvent.Type.KeyPress:
+            if self._tabs.currentIndex() == PLAYER_TAB_INDEX:
+                k = event.key()
+                mods = event.modifiers()
+                if mods == Qt.KeyboardModifier.NoModifier:
+                    player_keys = (
+                        Qt.Key.Key_Space, Qt.Key.Key_Left, Qt.Key.Key_Right,
+                        Qt.Key.Key_F, Qt.Key.Key_F11, Qt.Key.Key_M,
+                    )
+                    if k in player_keys or (
+                        k == Qt.Key.Key_Escape and self._player._is_fullscreen
+                    ):
+                        if self._player._is_fullscreen and self._player._fullscreen_win:
+                            self._player._fullscreen_win.keyPressEvent(event)
+                        else:
+                            self._player.keyPressEvent(event)
+                        return True
+        return False
+
     # ── Close ──────────────────────────────────────────────────────────────────
 
     def closeEvent(self, event) -> None:
+        QApplication.instance().removeEventFilter(self)
         try:
             sizes                  = self._splitter.sizes()
             settings               = self._settings_mgr.load()

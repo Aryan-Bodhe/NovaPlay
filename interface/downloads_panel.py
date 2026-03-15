@@ -14,6 +14,8 @@ Layout:
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QScrollArea, QFrame, QFileDialog, QDialog, QDialogButtonBox,
@@ -23,7 +25,7 @@ from PyQt6.QtCore import Qt, pyqtSlot
 
 from core.torrent_engine import TorrentEngine, TorrentState
 from interface.download_item_widget import DownloadItemWidget
-from interface.icon_store import plus_icon, ICON_SIZE
+from interface.icon_store import big_plus_icon, refresh_icon, ICON_SIZE_MEDIUM
 from utils.logger import get_logger
 
 log = get_logger("downloads_panel")
@@ -40,8 +42,10 @@ class DownloadsPanel(QWidget):
         # info_hash → (widget, last_status_category)
         self._items:  dict[str, DownloadItemWidget] = {}
         self._categ:  dict[str, str]                = {}   # "active" | "done"
+        self._local_prefix = "local::"
 
-        self.setObjectName("explorer_panel")   # reuse sidebar styling
+        # Match the same sidebar surface color used by the library panel.
+        self.setObjectName("sidebar_frame")
         self._build_ui()
         self._connect_engine()
 
@@ -66,9 +70,18 @@ class DownloadsPanel(QWidget):
         h_lay.addWidget(title)
         h_lay.addStretch()
 
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(refresh_icon)
+        refresh_btn.setIconSize(ICON_SIZE_MEDIUM)
+        refresh_btn.setObjectName("icon_btn")
+        refresh_btn.setFixedSize(28, 28)
+        refresh_btn.setToolTip("Refresh downloads")
+        refresh_btn.clicked.connect(self.refresh)
+        h_lay.addWidget(refresh_btn)
+
         add_btn = QPushButton()
-        add_btn.setIcon(plus_icon)
-        add_btn.setIconSize(ICON_SIZE)
+        add_btn.setIcon(big_plus_icon)
+        add_btn.setIconSize(ICON_SIZE_MEDIUM)
         add_btn.setObjectName("icon_btn")
         add_btn.setFixedSize(32, 28)
         add_btn.setToolTip("Add magnet link or .torrent file")
@@ -79,11 +92,13 @@ class DownloadsPanel(QWidget):
 
         # ── Scrollable list ───────────────────────────────────────────────────
         scroll = QScrollArea()
+        scroll.setObjectName("sidebar_scroll")
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea{border:none;background:transparent;}")
 
         self._list_container = QWidget()
+        self._list_container.setObjectName("sidebar_content")
+        self._list_container.setAutoFillBackground(True)
         self._list_layout    = QVBoxLayout(self._list_container)
         self._list_layout.setContentsMargins(0, 4, 0, 4)
         self._list_layout.setSpacing(0)
@@ -107,12 +122,25 @@ class DownloadsPanel(QWidget):
         self._engine.state_updated.connect(self._on_state_updated)
         self._engine.torrent_removed.connect(self._on_torrent_removed)
         # Populate panel with any historical entries loaded from disk
-        self._engine.emit_all_states()
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Refresh from engine states and local download folder on demand."""
+        for state in self._engine.all_states():
+            self._on_torrent_added(state.info_hash)
+            widget = self._items.get(state.info_hash)
+            if widget is not None:
+                widget.update_state(state)
+                self._categ[state.info_hash] = self._category(state.status)
+        self._sync_local_files()
+        self._reorder()
 
     # ── Engine slots ───────────────────────────────────────────────────────────
 
     @pyqtSlot(str)
     def _on_torrent_added(self, info_hash: str) -> None:
+        if info_hash in self._items:
+            return
         state = self._engine.get_state(info_hash)
         if state is None:
             return
@@ -133,6 +161,7 @@ class DownloadsPanel(QWidget):
         # New items always go to the top of their category group
         self._list_layout.insertWidget(0, widget)
         self._insert_separator_after(widget)
+        self._sync_local_files()
 
     @pyqtSlot(str, object)
     def _on_state_updated(self, info_hash: str, state: TorrentState) -> None:
@@ -146,23 +175,13 @@ class DownloadsPanel(QWidget):
             self._categ[info_hash] = new_cat
             self._reorder()
 
+        # Refresh local entries so they remain in sync with on-disk contents.
+        self._sync_local_files()
+
     @pyqtSlot(str)
     def _on_torrent_removed(self, info_hash: str) -> None:
-        widget = self._items.pop(info_hash, None)
-        self._categ.pop(info_hash, None)
-        if widget:
-            # Also remove any separator that immediately follows it
-            idx = self._list_layout.indexOf(widget)
-            if idx >= 0:
-                next_item = self._list_layout.itemAt(idx + 1)
-                if next_item and isinstance(next_item.widget(), _Separator):
-                    self._list_layout.removeItem(next_item)
-                    next_item.widget().deleteLater()
-            self._list_layout.removeWidget(widget)
-            widget.deleteLater()
-
-        if not self._items:
-            self._empty_lbl.setVisible(True)
+        self._remove_item(info_hash)
+        self._sync_local_files()
 
     # ── Add dialog ─────────────────────────────────────────────────────────────
 
@@ -219,6 +238,105 @@ class DownloadsPanel(QWidget):
     def _category(status: str) -> str:
         return "active" if status in _ACTIVE_STATUSES else "done"
 
+    def _is_local_hash(self, info_hash: str) -> bool:
+        return info_hash.startswith(self._local_prefix)
+
+    def _download_dir(self) -> Path:
+        # Use active engine save path when available, else default fallback.
+        save_path = getattr(self._engine, "_save_path", None) or str(
+            Path.home() / "Downloads" / "NovaPlay"
+        )
+        return Path(save_path)
+
+    def _local_hash(self, path: Path) -> str:
+        return f"{self._local_prefix}{path}"
+
+    def _existing_torrent_names(self) -> set[str]:
+        return {
+            s.name.strip().lower()
+            for s in self._engine.all_states()
+            if (s.name or "").strip()
+        }
+
+    def _path_size(self, path: Path) -> int:
+        try:
+            if path.is_file():
+                return path.stat().st_size
+            total = 0
+            if path.is_dir():
+                for p in path.rglob("*"):
+                    if p.is_file():
+                        try:
+                            total += p.stat().st_size
+                        except OSError:
+                            continue
+            return total
+        except OSError:
+            return 0
+
+    def _make_local_state(self, path: Path) -> TorrentState:
+        size = self._path_size(path)
+        return TorrentState(
+            info_hash=self._local_hash(path),
+            name=path.name,
+            total_size=size,
+            downloaded_bytes=size,
+            progress=1.0,
+            status="finished",
+            save_path=str(path.parent),
+            added_time=path.stat().st_mtime if path.exists() else 0.0,
+        )
+
+    def _add_local_item(self, path: Path) -> None:
+        state = self._make_local_state(path)
+        widget = DownloadItemWidget(state)
+        widget.remove_requested.connect(self._on_local_remove_requested)
+        widget.delete_file_requested.connect(self._on_local_delete_requested)
+
+        self._items[state.info_hash] = widget
+        self._categ[state.info_hash] = "done"
+        self._list_layout.insertWidget(0, widget)
+        self._insert_separator_after(widget)
+
+    @pyqtSlot(str)
+    def _on_local_remove_requested(self, info_hash: str) -> None:
+        self._remove_item(info_hash)
+
+    @pyqtSlot(str)
+    def _on_local_delete_requested(self, info_hash: str) -> None:
+        self._remove_item(info_hash)
+        self._sync_local_files()
+
+    def _sync_local_files(self) -> None:
+        download_dir = self._download_dir()
+        if not download_dir.exists():
+            return
+
+        torrent_names = self._existing_torrent_names()
+        disk_paths = [
+            p for p in sorted(download_dir.iterdir(), key=lambda x: x.name.lower())
+            if not p.name.startswith(".")
+        ]
+        local_hashes_on_disk = {self._local_hash(p) for p in disk_paths}
+
+        # Add files/folders on disk that are not represented by torrent states.
+        for path in disk_paths:
+            if path.name.strip().lower() in torrent_names:
+                continue
+            h = self._local_hash(path)
+            if h not in self._items:
+                self._add_local_item(path)
+
+        # Remove stale local entries that no longer exist on disk.
+        stale = [
+            h for h in self._items
+            if self._is_local_hash(h) and h not in local_hashes_on_disk
+        ]
+        for h in stale:
+            self._remove_item(h)
+
+        self._empty_lbl.setVisible(not bool(self._items))
+
     def _reorder(self) -> None:
         """
         Re-sort the list so active downloads appear above completed/paused ones.
@@ -250,6 +368,22 @@ class DownloadsPanel(QWidget):
         for pos, w in enumerate(new_order):
             self._list_layout.insertWidget(pos * 2, w)
             self._insert_separator_after(w)
+
+    def _remove_item(self, info_hash: str) -> None:
+        widget = self._items.pop(info_hash, None)
+        self._categ.pop(info_hash, None)
+        if widget is None:
+            return
+
+        idx = self._list_layout.indexOf(widget)
+        if idx >= 0:
+            next_item = self._list_layout.itemAt(idx + 1)
+            if next_item and isinstance(next_item.widget(), _Separator):
+                self._list_layout.removeItem(next_item)
+                next_item.widget().deleteLater()
+        self._list_layout.removeWidget(widget)
+        widget.deleteLater()
+        self._empty_lbl.setVisible(not bool(self._items))
 
     def _insert_separator_after(self, widget: QWidget) -> None:
         idx = self._list_layout.indexOf(widget)

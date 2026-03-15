@@ -1,5 +1,3 @@
-#!/home/aryan-bodhe/venvs/basics/bin/python
-
 import sys
 
 from PyQt6.QtWidgets import QApplication

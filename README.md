@@ -3,6 +3,11 @@
 NovaPlay is a PyQt6 desktop media app with a built-in browser, downloads panel,
 and VLC-backed playback UI.
 
+## TO-DO
+1. Add models to generate subtitles for any language.
+2. Add models to enhance video resolution.
+3. Add models to split vocal/background audio and add sliders to boost either.
+
 ## Install (Linux)
 
 For end users installing from this GitHub repository:

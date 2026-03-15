@@ -149,6 +149,14 @@ class TorrentEngine(QObject):
         if not _LT_OK:
             log.warning("libtorrent unavailable – cannot add torrent file")
             return None
+
+    def set_save_path(self, save_path: str) -> None:
+        """Update default save path for newly added torrents."""
+        self._save_path = save_path
+        try:
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            log.exception("Failed to create download directory: %s", save_path)
         try:
             info   = lt.torrent_info(filepath)
             params = lt.add_torrent_params()

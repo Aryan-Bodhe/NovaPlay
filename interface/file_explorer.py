@@ -12,7 +12,7 @@ from config.config import VIDEO_EXT
 from core.scanner import scan_series
 from utils.logger import get_logger
 from interface.icon_store import (
-    ICON_SIZE,
+    ICON_SIZE_MEDIUM,
     new_folder_icon,
     refresh_icon,
     trash_icon,
@@ -263,7 +263,7 @@ class FileExplorerPanel(QWidget):
 
         self._refresh_btn = QPushButton()
         self._refresh_btn.setIcon(refresh_icon)
-        self._refresh_btn.setIconSize(ICON_SIZE)
+        self._refresh_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._refresh_btn.setObjectName("icon_btn")
         self._refresh_btn.setFixedSize(28, 28)
         self._refresh_btn.setToolTip("Refresh library")
@@ -271,7 +271,7 @@ class FileExplorerPanel(QWidget):
 
         self._add_dir_btn = QPushButton()
         self._add_dir_btn.setIcon(new_folder_icon)
-        self._add_dir_btn.setIconSize(ICON_SIZE)
+        self._add_dir_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._add_dir_btn.setObjectName("icon_btn")
         self._add_dir_btn.setFixedSize(32, 28)
         self._add_dir_btn.setToolTip("Add watch directory")

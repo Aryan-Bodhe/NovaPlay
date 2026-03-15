@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QSlider,
     QPushButton, QLabel, QSizePolicy, QStackedWidget, QMenu, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer, QEvent, QPoint
+from PyQt6.QtCore import Qt, QTimer, QEvent, QPoint, QRect
 from PyQt6.QtGui import QIcon, QPalette, QColor, QFont, QAction
 
 from config.config import STATE_FILE, REWIND_ON_RESUME
@@ -147,6 +147,21 @@ class FullscreenOverlay(QWidget):
         # Any mouse movement anywhere in the app resets the hide timer
         if event.type() == QEvent.Type.MouseMove:
             self._on_mouse_activity()
+        # Left-click in the video area toggles play/pause.
+        # VLC's native X11 window eats Qt widget events, so we must intercept
+        # at the application level using global coordinates.
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton):
+            gp = event.globalPosition().toPoint()
+            overlay_rect = QRect(self.mapToGlobal(QPoint(0, 0)), self.size())
+            ctrl_rect    = QRect(
+                self._controls_wrapper.mapToGlobal(QPoint(0, 0)),
+                self._controls_wrapper.size(),
+            )
+            if overlay_rect.contains(gp):
+                self._on_mouse_activity()          # always show/reset controls on click
+                if not ctrl_rect.contains(gp):    # only toggle if not on controls
+                    self._player.toggle_play()
         return False
 
     # ── Controls show / hide ─────────────────────────────────────────
@@ -183,7 +198,8 @@ class FullscreenOverlay(QWidget):
             pw.seek_relative(_SEEK_STEP_MS)
         elif k == Qt.Key.Key_M:
             pw.toggle_mute()
-        super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         self._player.toggle_fullscreen()
@@ -233,6 +249,10 @@ class PlayerWidget(QWidget):
         self._seek_block_timer.setInterval(700)
         self._seek_block_timer.timeout.connect(lambda: setattr(self, "_seeking", False))
 
+        # Intercept mouse presses app-wide so clicks on the VLC native window
+        # (which eats Qt widget-level events) still reach us.
+        QApplication.instance().installEventFilter(self)
+
     # ── UI construction ──────────────────────────────────────────
 
     def _build_ui(self):
@@ -280,15 +300,17 @@ class PlayerWidget(QWidget):
 
         self._play_btn = QPushButton()
         self._play_btn.setIcon(play_icon)
-        self._play_btn.setIconSize(ICON_SIZE)
+        self._play_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._play_btn.setObjectName("icon_btn")
         self._play_btn.setFixedSize(32, 32)
+        self._play_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._play_btn.setToolTip("Play / Pause  [Space]")
         self._play_btn.clicked.connect(self.toggle_play)
 
         self._seek = SeekSlider(Qt.Orientation.Horizontal)
         self._seek.setRange(0, 1000)
         self._seek.setValue(0)
+        self._seek.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._seek.sliderPressed.connect(self._on_seek_press)
         self._seek.sliderReleased.connect(self._on_seek_release)
 
@@ -304,9 +326,10 @@ class PlayerWidget(QWidget):
         # self._mute_btn = QPushButton("🔊")
         self._mute_btn = QPushButton()
         self._mute_btn.setIcon(volume_icon)
-        self._mute_btn.setIconSize(ICON_SIZE)
+        self._mute_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._mute_btn.setObjectName("icon_btn")
         self._mute_btn.setFixedSize(32, 32)
+        self._mute_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._mute_btn.setToolTip("Mute / Unmute  [M]")
         self._mute_btn.clicked.connect(self.toggle_mute)
 
@@ -314,6 +337,7 @@ class PlayerWidget(QWidget):
         self._vol_slider.setRange(0, 150)
         self._vol_slider.setValue(80)
         self._vol_slider.setFixedWidth(96)
+        self._vol_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._vol_slider.setToolTip("Volume")
         self._vol_slider.valueChanged.connect(self._on_volume_change)
 
@@ -330,9 +354,10 @@ class PlayerWidget(QWidget):
 
         self._sync_down_btn = QPushButton()
         self._sync_down_btn.setIcon(minus_icon)
-        self._sync_down_btn.setIconSize(ICON_SIZE)
+        self._sync_down_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._sync_down_btn.setObjectName("icon_btn")
         self._sync_down_btn.setFixedSize(26, 26)
+        self._sync_down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._sync_down_btn.setToolTip("Audio delay −100 ms")
         self._sync_down_btn.clicked.connect(lambda: self._adjust_audio_delay(-100_000))
 
@@ -343,9 +368,10 @@ class PlayerWidget(QWidget):
 
         self._sync_up_btn = QPushButton()
         self._sync_up_btn.setIcon(plus_icon)
-        self._sync_up_btn.setIconSize(ICON_SIZE)
+        self._sync_up_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._sync_up_btn.setObjectName("icon_btn")
         self._sync_up_btn.setFixedSize(26, 26)
+        self._sync_up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._sync_up_btn.setToolTip("Audio delay +100 ms")
         self._sync_up_btn.clicked.connect(lambda: self._adjust_audio_delay(100_000))
 
@@ -357,26 +383,29 @@ class PlayerWidget(QWidget):
 
         self._fs_btn = QPushButton()
         self._fs_btn.setIcon(fullscreen_icon)
-        self._fs_btn.setIconSize(ICON_SIZE)
+        self._fs_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._fs_btn.setObjectName("icon_btn")
         self._fs_btn.setFixedSize(36, 32)
+        self._fs_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._fs_btn.setToolTip("Fullscreen  [F]")
         self._fs_btn.clicked.connect(self.toggle_fullscreen)
 
         self._audio_btn = QPushButton()
         self._audio_btn.setIcon(audio_icon)
-        self._audio_btn.setIconSize(ICON_SIZE)
+        self._audio_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._audio_btn.setObjectName("icon_btn")
         self._audio_btn.setToolTip("Select audio track")
         self._audio_btn.setFixedHeight(26)
+        self._audio_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._audio_btn.clicked.connect(self._show_audio_menu)
 
         self._sub_btn = QPushButton()
         self._sub_btn.setIcon(subtitle_icon)
-        self._sub_btn.setIconSize(ICON_SIZE)
+        self._sub_btn.setIconSize(ICON_SIZE_MEDIUM)
         self._sub_btn.setObjectName("icon_btn")
         self._sub_btn.setToolTip("Select subtitle track")
         self._sub_btn.setFixedHeight(26)
+        self._sub_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._sub_btn.clicked.connect(self._show_subtitle_menu)
 
         # transport.addWidget(self._play_btn)
@@ -476,7 +505,7 @@ class PlayerWidget(QWidget):
         font.setWeight(QFont.Weight.Thin)
         name_lbl.setFont(font)
         name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_lbl.setStyleSheet("color:#5a5a8a;background:transparent;letter-spacing:6px;")
+        name_lbl.setStyleSheet("color:#c8c0e8;background:transparent;letter-spacing:6px;")
         inner.addWidget(name_lbl)
 
         hint_lbl = QLabel("Select a file from the library to begin")
@@ -715,6 +744,7 @@ class PlayerWidget(QWidget):
         self._player.play()
         # self._play_btn.setText("⏸")
         self._play_btn.setIcon(pause_icon)
+        self.setFocus()
 
     def _attach_window(self, frame=None):
         if frame is None:
@@ -774,6 +804,21 @@ class PlayerWidget(QWidget):
 
     # ── Key events ───────────────────────────────────────────────
 
+    def eventFilter(self, obj, event) -> bool:
+        """Left-click on video frame in non-fullscreen mode toggles play/pause."""
+        if (not self._is_fullscreen
+                and self._stack.currentIndex() == 1
+                and event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton):
+            gp = event.globalPosition().toPoint()
+            vr = QRect(self._video_frame.mapToGlobal(QPoint(0, 0)),
+                       self._video_frame.size())
+            cr = QRect(self._controls_bar.mapToGlobal(QPoint(0, 0)),
+                       self._controls_bar.size())
+            if vr.contains(gp) and not cr.contains(gp):
+                self.toggle_play()
+        return False
+
     def keyPressEvent(self, event):
         k = event.key()
         if k == Qt.Key.Key_Space:
@@ -792,6 +837,7 @@ class PlayerWidget(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        QApplication.instance().removeEventFilter(self)
         self._save_state()
         self._player.stop()
         super().closeEvent(event)
