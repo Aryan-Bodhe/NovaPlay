@@ -331,7 +331,6 @@ class PlayerWidget(QWidget):
         transport = QHBoxLayout()
         transport.setSpacing(6)
 
-        # self._mute_btn = QPushButton("🔊")
         self._mute_btn = QPushButton()
         self._mute_btn.setIcon(volume_icon)
         self._mute_btn.setIconSize(ICON_SIZE_MEDIUM)
@@ -352,10 +351,6 @@ class PlayerWidget(QWidget):
         self._vol_lbl = QLabel("80%")
         self._vol_lbl.setObjectName("subtitle")
         self._vol_lbl.setFixedWidth(36)
-
-        # self._title_lbl = QLabel("")
-        # self._title_lbl.setObjectName("subtitle")
-        # self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.sync_lbl = QLabel("A/V:")
         self.sync_lbl.setObjectName("subtitle")
@@ -382,12 +377,6 @@ class PlayerWidget(QWidget):
         self._sync_up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._sync_up_btn.setToolTip("Audio delay +100 ms")
         self._sync_up_btn.clicked.connect(lambda: self._adjust_audio_delay(100_000))
-
-        # self._sync_reset_btn = QPushButton("Reset")
-        # self._sync_reset_btn.setObjectName("icon_btn")
-        # self._sync_reset_btn.setFixedHeight(26)
-        # self._sync_reset_btn.setToolTip("Reset A/V sync to 0")
-        # self._sync_reset_btn.clicked.connect(self._reset_audio_delay)
 
         self._fs_btn = QPushButton()
         self._fs_btn.setIcon(fullscreen_icon)
@@ -416,8 +405,6 @@ class PlayerWidget(QWidget):
         self._sub_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._sub_btn.clicked.connect(self._show_subtitle_menu)
 
-        # transport.addWidget(self._play_btn)
-        # transport.addWidget(self._stop_btn)
         transport.addWidget(self._mute_btn)
         transport.addWidget(self._vol_slider)
         transport.addWidget(self._vol_lbl)
@@ -433,62 +420,6 @@ class PlayerWidget(QWidget):
         # transport.addStretch()
         transport.addWidget(self._fs_btn)
         c_layout.addLayout(transport)
-
-        # ── Row 3: VLC track controls ─────────────────────────────
-        # vlc_row = QHBoxLayout()
-        # vlc_row.setSpacing(6)
-
-        # self._audio_btn = QPushButton("🎵 Audio")
-        # self._audio_btn.setObjectName("icon_btn")
-        # self._audio_btn.setToolTip("Select audio track")
-        # self._audio_btn.setFixedHeight(26)
-        # self._audio_btn.clicked.connect(self._show_audio_menu)
-
-        # self._sub_btn = QPushButton("💬 Subtitles")
-        # self._sub_btn.setObjectName("icon_btn")
-        # self._sub_btn.setToolTip("Select subtitle track")
-        # self._sub_btn.setFixedHeight(26)
-        # self._sub_btn.clicked.connect(self._show_subtitle_menu)
-
-        # A/V sync
-        # sync_lbl = QLabel("A/V:")
-        # sync_lbl.setObjectName("subtitle")
-
-        # self._sync_down_btn = QPushButton()
-        # self._sync_down_btn.setIcon(minus_icon)
-        # self._sync_down_btn.setObjectName("icon_btn")
-        # self._sync_down_btn.setFixedSize(26, 26)
-        # self._sync_down_btn.setToolTip("Audio delay −100 ms")
-        # self._sync_down_btn.clicked.connect(lambda: self._adjust_audio_delay(-100_000))
-
-        # self._sync_lbl = QLabel("0 ms")
-        # self._sync_lbl.setObjectName("subtitle")
-        # self._sync_lbl.setFixedWidth(70)
-        # self._sync_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # self._sync_up_btn = QPushButton()
-        # self._sync_up_btn.setIcon(plus_icon)
-        # self._sync_up_btn.setObjectName("icon_btn")
-        # self._sync_up_btn.setFixedSize(26, 26)
-        # self._sync_up_btn.setToolTip("Audio delay +100 ms")
-        # self._sync_up_btn.clicked.connect(lambda: self._adjust_audio_delay(100_000))
-
-        # self._sync_reset_btn = QPushButton("Reset")
-        # self._sync_reset_btn.setObjectName("icon_btn")
-        # self._sync_reset_btn.setFixedHeight(26)
-        # self._sync_reset_btn.setToolTip("Reset A/V sync to 0")
-        # self._sync_reset_btn.clicked.connect(self._reset_audio_delay)
-
-        # vlc_row.addWidget(self._audio_btn)
-        # vlc_row.addWidget(self._sub_btn)
-        # vlc_row.addSpacing(16)
-        # vlc_row.addWidget(sync_lbl)
-        # vlc_row.addWidget(self._sync_down_btn)
-        # vlc_row.addWidget(self._sync_lbl)
-        # vlc_row.addWidget(self._sync_up_btn)
-        # vlc_row.addWidget(self._sync_reset_btn)
-        # vlc_row.addStretch()
-        # c_layout.addLayout(vlc_row)
 
         self._controls_bar = controls
         controls.hide()
