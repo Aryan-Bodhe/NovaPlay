@@ -76,6 +76,26 @@ DEFAULT_LISTS: list[tuple[str, str]] = [
         "uBlock Origin Filters",
         "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
     ),
+    (
+        "uBlock Origin Privacy",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
+    ),
+    (
+        "uBlock Origin Badware",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
+    ),
+    (
+        "uBlock Origin Quick Fixes",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt",
+    ),
+    (
+        "uBlock Origin Unbreak",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt",
+    ),
+    (
+        "uBlock Origin Annoyances",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances.txt",
+    ),
 ]
 
 CACHE_DIR = Path.home() / ".cache" / "novaplay" / "adblocker"
@@ -86,6 +106,24 @@ _COSMETIC_CAP = 8_000
 
 # Script name used in the profile's script collection
 _COSMETIC_SCRIPT_NAME = "novaplay-adblocker-cosmetic"
+
+_DEFAULT_BLOCK_EMBEDDED_ADS = True
+_DEFAULT_BLOCK_ALL_POPUPS = True
+
+# Block popups aggressively by default; keep a conservative set of known
+# legitimate popup destinations for auth/payments.
+_DEFAULT_STRICT_POPUP_BLOCKING = True
+_SAFE_POPUP_SUFFIXES = {
+    "accounts.google.com",
+    "login.live.com",
+    "microsoftonline.com",
+    "apple.com",
+    "github.com",
+    "gitlab.com",
+    "paypal.com",
+    "stripe.com",
+    "razorpay.com",
+}
 
 # ---------------------------------------------------------------------------
 # Parsed rules (one per filter-list file)
@@ -321,6 +359,13 @@ def _host_from_url(url_str: str) -> str:
         return urlsplit(url_str).hostname.lower()
     except (AttributeError, ValueError):
         return ""
+
+
+def _host_has_suffix(host: str, suffixes: set[str]) -> bool:
+    for suffix in suffixes:
+        if host == suffix or host.endswith("." + suffix):
+            return True
+    return False
 
 
 def _resource_type_name(resource_type: object) -> str:
@@ -785,7 +830,10 @@ class AdBlocker(QObject):
         self._profiles: list[QWebEngineProfile] = []
         self._lock = threading.Lock()
         self._loading = False  # prevents duplicate concurrent loads
-        self._block_embedded_ads = False
+        self._block_embedded_ads = _DEFAULT_BLOCK_EMBEDDED_ADS
+        self._interceptor.block_embedded_ads = self._block_embedded_ads
+        self._block_all_popups = _DEFAULT_BLOCK_ALL_POPUPS
+        self._strict_popup_blocking = _DEFAULT_STRICT_POPUP_BLOCKING
 
         # Signal is always delivered on the main thread regardless of where
         # it was emitted from, so _inject_cosmetic is always called safely.
@@ -814,6 +862,36 @@ class AdBlocker(QObject):
         self._interceptor.block_embedded_ads = value
         log.info(
             "AdBlocker: embedded resource blocking %s",
+            "enabled" if value else "disabled",
+        )
+        if value:
+            css = self._ruleset.cosmetic_css()
+            if css:
+                self._cosmetic_ready.emit(css)
+        else:
+            self._remove_cosmetic_script()
+
+    @property
+    def block_all_popups(self) -> bool:
+        return self._block_all_popups
+
+    @block_all_popups.setter
+    def block_all_popups(self, value: bool) -> None:
+        self._block_all_popups = bool(value)
+        log.info(
+            "AdBlocker: block-all-popups %s",
+            "enabled" if value else "disabled",
+        )
+
+    @property
+    def strict_popup_blocking(self) -> bool:
+        return self._strict_popup_blocking
+
+    @strict_popup_blocking.setter
+    def strict_popup_blocking(self, value: bool) -> None:
+        self._strict_popup_blocking = bool(value)
+        log.info(
+            "AdBlocker: strict popup blocking %s",
             "enabled" if value else "disabled",
         )
 
@@ -875,6 +953,8 @@ class AdBlocker(QObject):
         """Return a snapshot of current rule counts and block statistics."""
         stats = self._ruleset.stats()
         stats["block_embedded_ads"] = self._block_embedded_ads
+        stats["block_all_popups"] = self._block_all_popups
+        stats["strict_popup_blocking"] = self._strict_popup_blocking
         return stats
 
     def should_block_navigation(
@@ -895,6 +975,20 @@ class AdBlocker(QObject):
         is_third_party = bool(first_party_host) and not _is_same_party(
             host, first_party_host
         )
+
+        if popup and self._block_all_popups and not _host_has_suffix(
+            host, _SAFE_POPUP_SUFFIXES
+        ):
+            return True
+
+        if (
+            popup
+            and self._strict_popup_blocking
+            and is_third_party
+            and not _host_has_suffix(host, _SAFE_POPUP_SUFFIXES)
+        ):
+            return True
+
         return self._ruleset.should_block(
             url_str,
             host,
@@ -936,6 +1030,15 @@ class AdBlocker(QObject):
         finally:
             with self._lock:
                 self._loading = False
+
+    def _remove_cosmetic_script(self) -> None:
+        with self._lock:
+            for profile in self._profiles:
+                collection = profile.scripts()
+                for existing in _iter_found_scripts(
+                    collection.find(_COSMETIC_SCRIPT_NAME)
+                ):
+                    collection.remove(existing)
 
     def _inject_cosmetic(self, css: str) -> None:
         """

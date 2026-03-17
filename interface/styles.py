@@ -90,6 +90,9 @@ QPushButton#icon_btn {
     background: transparent; border: none; padding: 3px; border-radius: 3px;
 }
 QPushButton#icon_btn:hover { background: #3a3d41; }
+QFrame#controls_bar[fullscreen="true"] { background: transparent; border: none; }
+QFrame#controls_bar[fullscreen="true"] QPushButton#icon_btn:hover { background: rgba(255, 255, 255, 35); }
+QFrame#controls_bar[fullscreen="true"] QPushButton#icon_btn:pressed { background: rgba(255, 255, 255, 55); }
 
 QSlider::groove:horizontal {
     height: 4px; background: #464647; border-radius: 2px;
@@ -307,6 +310,9 @@ QPushButton#accent { background-color: #7c3aed; color: #ffffff; border: none; }
 QPushButton#accent:hover { background-color: #9d55ff; }
 QPushButton#icon_btn { background: transparent; border: none; padding: 4px; border-radius: 4px; }
 QPushButton#icon_btn:hover { background-color: #2a2a45; }
+QFrame#controls_bar[fullscreen="true"] { background: transparent; border: none; }
+QFrame#controls_bar[fullscreen="true"] QPushButton#icon_btn:hover { background: rgba(0, 0, 0, 100); }
+QFrame#controls_bar[fullscreen="true"] QPushButton#icon_btn:pressed { background: rgba(255, 255, 255, 55); }
 
 QSlider::groove:horizontal { height: 4px; background: #2a2a45; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; height: 4px; }

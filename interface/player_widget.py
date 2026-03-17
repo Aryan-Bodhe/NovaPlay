@@ -73,8 +73,10 @@ class FullscreenOverlay(QWidget):
         self._player = player_widget
         self._controls_hidden = False
 
+        self.setObjectName("FullScreenOverlay")
+        self.setStyleSheet("QWidget#FullscreenOverlay { background: black; }")
         self.setGeometry(parent.rect())
-        self.setStyleSheet("background: black;")
+        # self.setStyleSheet("background: black;")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
@@ -94,7 +96,9 @@ class FullscreenOverlay(QWidget):
         self._controls_wrapper = QWidget(self)
         self._controls_wrapper.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
         self._controls_wrapper.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._controls_wrapper.setStyleSheet("background: rgba(0, 0, 0, 180);")
+        # self._controls_wrapper.setStyleSheet("background: rgba(0, 0, 0, 180);")
+        self._controls_wrapper.setObjectName("ControlsWrapper")
+        self._controls_wrapper.setStyleSheet("QWidget#ControlsWrapper { background: rgba(0, 0, 0, 180); }")
 
         wrapper_layout = QVBoxLayout(self._controls_wrapper)
         wrapper_layout.setContentsMargins(0, 4, 0, 0)
@@ -102,16 +106,16 @@ class FullscreenOverlay(QWidget):
 
         # Reparent the controls bar into the overlay; make its background
         # transparent so only the wrapper's rgba shows.
-        self._orig_controls_style = player_widget._controls_bar.styleSheet()
-        player_widget._controls_bar.setStyleSheet(
-            "background: transparent;"
-            " QPushButton#icon_btn {"
-            "  background: transparent; border: none; padding: 3px; border-radius: 3px;"
-            " }"
-            " QPushButton#icon_btn:hover { background: rgba(255, 255, 255, 35); }"
-            " QPushButton#icon_btn:pressed { background: rgba(255, 255, 255, 55); }"
-        )
+        # Use a dynamic "fullscreen" property so the global stylesheet (styles.py) drives
+        # the hover state — avoids a local setStyleSheet that breaks Qt's hover tracking.
         wrapper_layout.addWidget(player_widget._controls_bar)
+        bar = player_widget._controls_bar
+        bar.setProperty("fullscreen", "true")
+        bar.style().unpolish(bar)
+        bar.style().polish(bar)
+        for btn in bar.findChildren(QPushButton):
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
         # ── Auto-hide timer (t s of inactivity) ─────────────────────
         self._hide_timer = QTimer(self)
@@ -219,7 +223,13 @@ class FullscreenOverlay(QWidget):
         if self.parent():
             self.parent().removeEventFilter(self)
         self._hide_timer.stop()
-        self._player._controls_bar.setStyleSheet(self._orig_controls_style)
+        bar = self._player._controls_bar
+        bar.setProperty("fullscreen", None)
+        bar.style().unpolish(bar)
+        bar.style().polish(bar)
+        for btn in bar.findChildren(QPushButton):
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
         # Restore cursor on the main window
         self.parent().unsetCursor() if self.parent() else None
 
@@ -653,14 +663,20 @@ class PlayerWidget(QWidget):
             self._attach_window(self._fullscreen_win._video_frame)
             media = self._vlc_instance.media_new(str(self._current_path))
             media.add_option(f":start-time={pos_ms / 1000:.3f}")
-            if not was_playing:
-                media.add_option(":start-paused")
+            
+            # 1. Remove the 'if not was_playing: ... ":start-paused"' block completely
+            
             self._player.set_media(media)
             self._player.play()
+            
             if was_playing:
                 self._play_btn.setIcon(pause_icon)
             else:
                 self._play_btn.setIcon(play_icon)
+                # 2. Let VLC push the frame to the GPU, then explicitly pause
+                QTimer.singleShot(150, lambda: self._player.set_pause(1))
+
+        QTimer.singleShot(300, _start)
 
         QTimer.singleShot(300, _start)
 
@@ -679,14 +695,19 @@ class PlayerWidget(QWidget):
         self._attach_window(self._video_frame)
         media = self._vlc_instance.media_new(str(self._current_path))
         media.add_option(f":start-time={pos_ms / 1000:.3f}")
-        if not was_playing:
-            media.add_option(":start-paused")
+        
+        # 1. Remove the 'if not was_playing: ... ":start-paused"' block completely
+
         self._player.set_media(media)
         self._player.play()
+        
         if was_playing:
             self._play_btn.setIcon(pause_icon)
         else:
             self._play_btn.setIcon(play_icon)
+            # 2. Let VLC push the frame to the GPU, then explicitly pause
+            QTimer.singleShot(150, lambda: self._player.set_pause(1))
+            
         self.setFocus()
 
     def _teardown_fullscreen_overlay(self):
