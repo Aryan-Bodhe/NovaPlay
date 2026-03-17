@@ -23,6 +23,7 @@ from interface.icon_store import (
     bookmark_icon,
     ICON_SIZE_SMALL,
 )
+from utils.adblocker import AdBlocker
 from utils.logger import get_logger
 
 log = get_logger("browser")
@@ -134,23 +135,97 @@ class _CustomPage(QWebEnginePage):
     new_window_requested = pyqtSignal(object)  # emits QWebEngineView
     magnet_requested     = pyqtSignal(str)
 
+    def __init__(
+        self,
+        parent=None,
+        *,
+        adblocker: AdBlocker | None = None,
+        opener_url: QUrl | None = None,
+    ):
+        super().__init__(parent)
+        self._adblocker = adblocker
+        self._opener_url = opener_url or QUrl()
+
+    def _source_url(self) -> str:
+        current = self.url().toString()
+        if current and current != "about:blank":
+            return current
+        return self._opener_url.toString()
+
+    def _should_block_navigation(
+        self,
+        url: QUrl,
+        nav_type,
+        *,
+        popup: bool,
+    ) -> bool:
+        if self._adblocker is None:
+            return False
+
+        nav_name = getattr(nav_type, "name", "")
+        if not popup and nav_name != "NavigationTypeRedirectNavigation":
+            return False
+
+        if self._adblocker.should_block_navigation(
+            url.toString(),
+            self._source_url(),
+            popup=popup,
+        ):
+            reason = "popup" if popup else "redirect"
+            log.info("Blocked %s navigation: %s", reason, url.toString()[:120])
+            return True
+        return False
+
     def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
         if url.scheme() == "magnet":
             log.info("Magnet intercepted: %s", url.toString()[:80])
             self.magnet_requested.emit(url.toString())
+            return False
+        if is_main_frame and self._should_block_navigation(url, nav_type, popup=False):
             return False
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
     def createWindow(self, window_type):
         """Handle target=_blank links and window.open() calls by emitting a signal."""
         new_view = QWebEngineView()
-        new_page = _CustomPage(new_view)
+        new_page = _PopupPage(
+            new_view,
+            adblocker=self._adblocker,
+            opener_url=self.url(),
+        )
         # Propagate further popup and magnet requests through the new page
         new_page.new_window_requested.connect(self.new_window_requested)
         new_page.magnet_requested.connect(self.magnet_requested)
         new_view.setPage(new_page)
-        self.new_window_requested.emit(new_view)
         return new_page
+
+
+class _PopupPage(_CustomPage):
+    def __init__(
+        self,
+        view: QWebEngineView,
+        *,
+        adblocker: AdBlocker | None = None,
+        opener_url: QUrl | None = None,
+    ):
+        super().__init__(view, adblocker=adblocker, opener_url=opener_url)
+        self._view = view
+        self._was_adopted = False
+
+    def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
+        if is_main_frame and self._should_block_navigation(url, nav_type, popup=True):
+            return False
+
+        allowed = super().acceptNavigationRequest(url, nav_type, is_main_frame)
+        if (
+            allowed
+            and is_main_frame
+            and not self._was_adopted
+            and url.scheme() not in {"about", "javascript"}
+        ):
+            self._was_adopted = True
+            QTimer.singleShot(0, lambda: self.new_window_requested.emit(self._view))
+        return allowed
 
 
 class BrowserPanel(QWidget):
@@ -164,12 +239,14 @@ class BrowserPanel(QWidget):
         self,
         bookmarks: list[Bookmark],
         settings_manager,
+        adblocker: AdBlocker | None = None,
         adopt_view: QWebEngineView | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self._bookmarks: list[Bookmark] = list(bookmarks)
         self._settings_manager = settings_manager
+        self._adblocker = adblocker
         self._adopt_view = adopt_view
 
         self._build_ui()
@@ -278,7 +355,7 @@ class BrowserPanel(QWidget):
             self._browser.page().magnet_requested.connect(self.magnet_requested)
         else:
             self._browser = QWebEngineView()
-            page = _CustomPage(self._browser)
+            page = _CustomPage(self._browser, adblocker=self._adblocker)
             page.new_window_requested.connect(self.open_in_new_tab)
             page.magnet_requested.connect(self.magnet_requested)
             self._browser.setPage(page)
@@ -290,6 +367,7 @@ class BrowserPanel(QWidget):
         self._browser.urlChanged.connect(self._on_url_changed)
         self._browser.titleChanged.connect(self._on_title_changed)
         root.addWidget(self._browser, stretch=1)
+        self.setFocusProxy(self._browser)
 
         # ── Status strip ──────────────────────────────────────────
         self._status = QLabel("")
@@ -320,7 +398,7 @@ class BrowserPanel(QWidget):
         # Inject `color-scheme: dark` into every page so sites that honour the
         # media query switch to their own dark theme automatically.
         script_name = "novaplay-dark-mode"
-        if profile.scripts().find(script_name) is None:
+        if not profile.scripts().find(script_name):
             script = QWebEngineScript()
             script.setName(script_name)
             script.setSourceCode(

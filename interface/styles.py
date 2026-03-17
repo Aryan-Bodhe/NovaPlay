@@ -57,6 +57,22 @@ QTabBar::tab:selected {
 }
 QTabBar::tab:hover:!selected { background: #2a2d2e; color: #cccccc; }
 QTabBar::close-button { subcontrol-position: right; }
+QTabBar::tab:last {
+    background: #252526; min-width: 28px; max-width: 28px; padding: 0; border: none;
+}
+QTabBar::tab:last:hover { background: #252526; }
+QTabBar::tab:last:selected { background: #252526; border-bottom: none; }
+QPushButton#new_tab_btn {
+    background: transparent; border: none; padding: 4px; border-radius: 3px;
+}
+QPushButton#new_tab_btn:hover { background: #3a3d41; }
+QPushButton#new_tab_btn:pressed { background: #00000030; }
+QPushButton#blank_new_tab_btn {
+    background: #1e1e1e; color: #cccccc;
+    border: 1px solid #3c3c3c; border-radius: 6px; padding: 6px 14px;
+}
+QPushButton#blank_new_tab_btn:hover { background: #2a2d2e; border-color: #007acc; color: #ffffff; }
+QPushButton#blank_new_tab_btn:pressed { background: #007acc; color: #ffffff; border-color: #007acc; }
 
 QPushButton {
     background-color: #3a3d41;
@@ -173,6 +189,37 @@ QListWidget::item:hover { background-color: #2a2d2e; }
 
 QDialog { background-color: #252526; border: 1px solid #454545; border-radius: 6px; }
 
+QFrame#settings_card {
+    background-color: #2a2c30;
+    border: 1px solid #34373c;
+    border-radius: 8px;
+}
+QFrame#settings_card[interactive="true"]:hover {
+    border-color: #4d5966;
+}
+QFrame#settings_card[active="true"] {
+    background-color: #0f2d42;
+    border: 1px solid #007acc;
+}
+QFrame#settings_card[interactive="false"] {
+    background-color: #24262a;
+    border: 1px solid #2f3236;
+}
+QLabel#settings_card_title {
+    color: #f0f0f0;
+    font-size: 13px;
+    font-weight: 600;
+}
+QLabel#settings_card_subtitle {
+    color: #9a9a9a;
+    font-size: 11px;
+}
+QLabel#settings_card_state {
+    color: #007acc;
+    font-size: 11px;
+    font-weight: 600;
+}
+
 QStatusBar {
     background-color: #007acc; color: #ffffff;
     border: none; font-size: 11px;
@@ -232,6 +279,22 @@ QTabBar::tab {
 }
 QTabBar::tab:selected { color: #c77dff; border-bottom: 2px solid #c77dff; }
 QTabBar::tab:hover:!selected { color: #d0d0f0; background-color: #222240; }
+QTabBar::tab:last {
+    background: #1a1a2e; min-width: 28px; max-width: 28px; padding: 0; border: none;
+}
+QTabBar::tab:last:hover { background: #1a1a2e; }
+QTabBar::tab:last:selected { background: #1a1a2e; border-bottom: none; }
+QPushButton#new_tab_btn {
+    background: transparent; border: none; padding: 4px; border-radius: 3px;
+}
+QPushButton#new_tab_btn:hover { background: #2a2a45; }
+QPushButton#new_tab_btn:pressed { background: #00000030; }
+QPushButton#blank_new_tab_btn {
+    background: #1a1a2e; color: #e0e0f0;
+    border: 1px solid #2d2d50; border-radius: 6px; padding: 6px 14px;
+}
+QPushButton#blank_new_tab_btn:hover { background: #2a2a45; border-color: #7c3aed; color: #ffffff; }
+QPushButton#blank_new_tab_btn:pressed { background: #4a3f8f; color: #ffffff; border-color: #c77dff; }
 
 QPushButton {
     background-color: #2a2a45; color: #e0e0f0;
@@ -324,6 +387,36 @@ QListWidget::item:selected { background-color: #3d2f7a; }
 QListWidget::item:hover { background-color: #22224a; }
 
 QDialog { background-color: #1a1a2e; border: 1px solid #2d2d50; border-radius: 8px; }
+QFrame#settings_card {
+    background-color: #161626;
+    border: 1px solid #2d2d50;
+    border-radius: 10px;
+}
+QFrame#settings_card[interactive="true"]:hover {
+    border-color: #6455aa;
+}
+QFrame#settings_card[active="true"] {
+    background-color: #23193f;
+    border: 1px solid #9d55ff;
+}
+QFrame#settings_card[interactive="false"] {
+    background-color: #141422;
+    border: 1px solid #252542;
+}
+QLabel#settings_card_title {
+    color: #f0eaff;
+    font-size: 13px;
+    font-weight: 600;
+}
+QLabel#settings_card_subtitle {
+    color: #9a92c8;
+    font-size: 11px;
+}
+QLabel#settings_card_state {
+    color: #c77dff;
+    font-size: 11px;
+    font-weight: 700;
+}
 QStatusBar { background-color: #1a1a2e; color: #8080aa; border-top: 1px solid #2a2a45; font-size: 11px; }
 QToolTip { background-color: #2a2a45; color: #e0e0f0; border: 1px solid #4a4a70; border-radius: 4px; padding: 4px 8px; }
 

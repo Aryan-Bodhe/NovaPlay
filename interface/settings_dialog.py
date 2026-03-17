@@ -73,6 +73,31 @@ class _ThemeSelector(QWidget):
         return self._value
 
 
+class _FeatureCard(QFrame):
+    def __init__(self, enabled: bool = True, parent=None):
+        super().__init__(parent)
+        self._enabled = enabled
+        self.setObjectName("settings_card")
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor
+        )
+        self.setProperty("interactive", enabled)
+        self.setProperty("active", False)
+
+    def set_active(self, active: bool):
+        self.setProperty("active", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def mousePressEvent(self, event):
+        if self._enabled and event.button() == Qt.MouseButton.LeftButton:
+            self.parent()._on_feature_card_clicked(self)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class SettingsDialog(QDialog):
     """Application settings dialog (theme, download directory, watch directories)."""
 
@@ -81,20 +106,22 @@ class SettingsDialog(QDialog):
         theme: str,
         download_dir: str,
         watch_dirs: list[str],
+        adblocker_enabled: bool = True,
         parent=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumSize(620, 460)
         self.setModal(True)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         self._dirs = list(watch_dirs)
-        self._build_ui(theme=theme, download_dir=download_dir)
+        self._build_ui(theme=theme, download_dir=download_dir, adblocker_enabled=adblocker_enabled)
 
         # Watch for clicks anywhere in the app to dismiss the floating panel
         QApplication.instance().installEventFilter(self)
 
-    def _build_ui(self, theme: str, download_dir: str):
+    def _build_ui(self, theme: str, download_dir: str, adblocker_enabled: bool):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -103,7 +130,7 @@ class SettingsDialog(QDialog):
         header.setObjectName("title")
         layout.addWidget(header)
 
-        subtitle = QLabel("Theme, download location, and library folders.")
+        subtitle = QLabel("Theme, download location, library folders, and browser settings.")
         subtitle.setObjectName("subtitle")
         layout.addWidget(subtitle)
 
@@ -113,6 +140,30 @@ class SettingsDialog(QDialog):
         theme_row.addWidget(theme_lbl)
         theme_row.addWidget(self._theme_selector, stretch=1)
         layout.addLayout(theme_row)
+
+        feature_row = QHBoxLayout()
+        feature_row.setSpacing(12)
+
+        self._adblocker_enabled = adblocker_enabled
+        self._adblocker_card, self._adblocker_state_lbl = self._build_feature_card(
+            title="Ad Blocker",
+            description="Block ads and trackers in the built-in browser.",
+            state_text="Enabled" if adblocker_enabled else "Disabled",
+            checked=adblocker_enabled,
+        )
+        feature_row.addWidget(self._adblocker_card, stretch=1)
+
+        self._vpn_card, self._vpn_state_lbl = self._build_feature_card(
+            title="VPN",
+            description="Reserved for upcoming in-app VPN controls.",
+            state_text="Coming Soon",
+            checked=False,
+            enabled=False,
+        )
+        feature_row.addWidget(self._vpn_card, stretch=1)
+
+        layout.addLayout(feature_row)
+        self._update_adblocker_state(adblocker_enabled)
 
         dl_lbl = QLabel("Download Folder")
         layout.addWidget(dl_lbl)
@@ -197,6 +248,57 @@ class SettingsDialog(QDialog):
         self._theme_selector.set_value(item.data(Qt.ItemDataRole.UserRole))
         self._theme_panel.hide()
 
+    def _build_feature_card(
+        self,
+        *,
+        title: str,
+        description: str,
+        state_text: str,
+        checked: bool,
+        enabled: bool = True,
+    ) -> tuple[_FeatureCard, QLabel]:
+        card = _FeatureCard(enabled=enabled, parent=self)
+
+        card_layout = QHBoxLayout(card)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(12)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("settings_card_title")
+        desc_lbl = QLabel(description)
+        desc_lbl.setObjectName("settings_card_subtitle")
+        desc_lbl.setWordWrap(True)
+        text_layout.addWidget(title_lbl)
+        text_layout.addWidget(desc_lbl)
+
+        state_layout = QVBoxLayout()
+        state_layout.setContentsMargins(0, 0, 0, 0)
+        state_layout.setSpacing(4)
+        state_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        state_lbl = QLabel(state_text)
+        state_lbl.setObjectName("settings_card_state")
+
+        state_layout.addWidget(state_lbl, alignment=Qt.AlignmentFlag.AlignRight)
+
+        card_layout.addLayout(text_layout, stretch=1)
+        card_layout.addLayout(state_layout)
+        card.set_active(checked)
+        return card, state_lbl
+
+    def _on_feature_card_clicked(self, card: _FeatureCard):
+        if card is self._adblocker_card:
+            self._update_adblocker_state(not self._adblocker_enabled)
+
+    def _update_adblocker_state(self, enabled: bool):
+        self._adblocker_enabled = enabled
+        self._adblocker_state_lbl.setText("Enabled" if enabled else "Disabled")
+        self._adblocker_card.set_active(enabled)
+
     def eventFilter(self, obj, event):
         """Dismiss the floating panel when clicking outside it."""
         if (self._theme_panel.isVisible()
@@ -233,6 +335,9 @@ class SettingsDialog(QDialog):
         for item in self._list_widget.selectedItems():
             self._dirs.remove(item.text())
             self._list_widget.takeItem(self._list_widget.row(item))
+
+    def selected_adblocker_enabled(self) -> bool:
+        return self._adblocker_enabled
 
     def selected_theme(self) -> str:
         return self._theme_selector.value()

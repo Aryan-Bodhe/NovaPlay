@@ -14,6 +14,7 @@ Layout:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -31,6 +32,7 @@ from utils.logger import get_logger
 log = get_logger("downloads_panel")
 
 _ACTIVE_STATUSES = {"metadata", "downloading", "checking", "paused"}
+_LOCAL_STATUS_FILE = Path.home() / ".novaplay" / "download_status_overrides.json"
 
 
 class DownloadsPanel(QWidget):
@@ -43,6 +45,8 @@ class DownloadsPanel(QWidget):
         self._items:  dict[str, DownloadItemWidget] = {}
         self._categ:  dict[str, str]                = {}   # "active" | "done"
         self._local_prefix = "local::"
+        self._local_status_overrides: dict[str, str] = {}
+        self._load_local_status_overrides()
 
         # Match the same sidebar surface color used by the library panel.
         self.setObjectName("sidebar_frame")
@@ -150,7 +154,7 @@ class DownloadsPanel(QWidget):
         widget = DownloadItemWidget(state)
         widget.pause_requested.connect(self._engine.pause)
         widget.resume_requested.connect(self._engine.resume)
-        widget.remove_requested.connect(self._engine.remove)
+        widget.remove_requested.connect(self._on_remove_requested)
         widget.delete_file_requested.connect(
             lambda h: self._engine.remove(h, delete_files=True)
         )
@@ -170,6 +174,14 @@ class DownloadsPanel(QWidget):
             return
         widget.update_state(state)
 
+        # If an active torrent reaches completion, clear any prior local
+        # "stopped" override for the same disk path.
+        if state.status == "finished":
+            local_hash = self._local_hash_for_state(state)
+            if local_hash is not None and local_hash in self._local_status_overrides:
+                self._local_status_overrides.pop(local_hash, None)
+                self._save_local_status_overrides()
+
         new_cat = self._category(state.status)
         if new_cat != self._categ.get(info_hash):
             self._categ[info_hash] = new_cat
@@ -182,6 +194,16 @@ class DownloadsPanel(QWidget):
     def _on_torrent_removed(self, info_hash: str) -> None:
         self._remove_item(info_hash)
         self._sync_local_files()
+
+    @pyqtSlot(str)
+    def _on_remove_requested(self, info_hash: str) -> None:
+        state = self._engine.get_state(info_hash)
+        if state is not None and state.status != "finished":
+            local_hash = self._local_hash_for_state(state)
+            if local_hash is not None:
+                self._local_status_overrides[local_hash] = "stopped"
+                self._save_local_status_overrides()
+        self._engine.remove(info_hash)
 
     # ── Add dialog ─────────────────────────────────────────────────────────────
 
@@ -251,6 +273,36 @@ class DownloadsPanel(QWidget):
     def _local_hash(self, path: Path) -> str:
         return f"{self._local_prefix}{path}"
 
+    def _local_hash_for_state(self, state: TorrentState) -> str | None:
+        if not state.save_path or not state.name:
+            return None
+        return self._local_hash(Path(state.save_path) / state.name)
+
+    def _load_local_status_overrides(self) -> None:
+        try:
+            if not _LOCAL_STATUS_FILE.exists():
+                return
+            data = json.loads(_LOCAL_STATUS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                self._local_status_overrides = {
+                    str(k): "stopped"
+                    for k, v in data.items()
+                    if v == "stopped" and str(k).startswith(self._local_prefix)
+                }
+        except Exception:
+            log.exception("Failed to load local download status overrides")
+            self._local_status_overrides = {}
+
+    def _save_local_status_overrides(self) -> None:
+        try:
+            _LOCAL_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _LOCAL_STATUS_FILE.write_text(
+                json.dumps(self._local_status_overrides, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            log.exception("Failed to save local download status overrides")
+
     def _existing_torrent_names(self) -> set[str]:
         return {
             s.name.strip().lower()
@@ -274,7 +326,7 @@ class DownloadsPanel(QWidget):
         except OSError:
             return 0
 
-    def _make_local_state(self, path: Path) -> TorrentState:
+    def _make_local_state(self, path: Path, status: str = "finished") -> TorrentState:
         size = self._path_size(path)
         return TorrentState(
             info_hash=self._local_hash(path),
@@ -282,13 +334,17 @@ class DownloadsPanel(QWidget):
             total_size=size,
             downloaded_bytes=size,
             progress=1.0,
-            status="finished",
+            status=status,
             save_path=str(path.parent),
             added_time=path.stat().st_mtime if path.exists() else 0.0,
         )
 
     def _add_local_item(self, path: Path) -> None:
-        state = self._make_local_state(path)
+        local_hash = self._local_hash(path)
+        state = self._make_local_state(
+            path,
+            status=self._local_status_overrides.get(local_hash, "finished"),
+        )
         widget = DownloadItemWidget(state)
         widget.remove_requested.connect(self._on_local_remove_requested)
         widget.delete_file_requested.connect(self._on_local_delete_requested)
@@ -304,6 +360,8 @@ class DownloadsPanel(QWidget):
 
     @pyqtSlot(str)
     def _on_local_delete_requested(self, info_hash: str) -> None:
+        self._local_status_overrides.pop(info_hash, None)
+        self._save_local_status_overrides()
         self._remove_item(info_hash)
         self._sync_local_files()
 
@@ -318,6 +376,15 @@ class DownloadsPanel(QWidget):
             if not p.name.startswith(".")
         ]
         local_hashes_on_disk = {self._local_hash(p) for p in disk_paths}
+
+        # Forget status overrides for files that no longer exist.
+        overrides_changed = False
+        for h in list(self._local_status_overrides):
+            if h not in local_hashes_on_disk:
+                self._local_status_overrides.pop(h, None)
+                overrides_changed = True
+        if overrides_changed:
+            self._save_local_status_overrides()
 
         # Add files/folders on disk that are not represented by torrent states.
         for path in disk_paths:

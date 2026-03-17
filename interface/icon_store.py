@@ -5,6 +5,7 @@ from PyQt6.QtGui import QIcon
 ICON_SIZE_LARGE = QSize(20, 20)
 ICON_SIZE_MEDIUM = QSize(14, 14)
 ICON_SIZE_SMALL = QSize(12, 12)
+ICON_SIZE_TINY = QSize(8, 8)
 
 # Resolve icons relative to repository root so launching from any CWD works.
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
@@ -35,11 +36,12 @@ _PINNED = _ASSETS_DIR / "pinned.svg"
 _LEFT_ARROW = _ASSETS_DIR / "left_arrow.svg"
 _RIGHT_ARROW = _ASSETS_DIR / "right_arrow.svg"
 _HOME = _ASSETS_DIR / "home.svg"
-_STAR = _ASSETS_DIR / "star.svg"
 _STARRED = _ASSETS_DIR / "starred.svg"
 _UNSTARRED = _ASSETS_DIR / "unstarred.svg"
 _BOOKMARK = _ASSETS_DIR / "bookmark.svg"
 _DROPDOWN = _ASSETS_DIR / "dropdown.svg"
+_CROSS = _ASSETS_DIR / "cross.svg"
+_BROWSER = _ASSETS_DIR / "browser_hollow.svg"
 
 novaplay_logo = QIcon(str(_NOVAPLAY_LOGO))
 novaplay_icon = QIcon(str(_NOVAPLAY_ICON))
@@ -67,8 +69,9 @@ pinned_icon = QIcon(str(_PINNED))
 left_arrow_icon = QIcon(str(_LEFT_ARROW))
 right_arrow_icon = QIcon(str(_RIGHT_ARROW))
 home_icon = QIcon(str(_HOME))
-star_icon = QIcon(str(_STAR))
 starred_icon = QIcon(str(_STARRED))
 unstarred_icon = QIcon(str(_UNSTARRED))
 bookmark_icon = QIcon(str(_BOOKMARK))
 dropdown_icon = QIcon(str(_DROPDOWN))
+cross_icon = QIcon(str(_CROSS))
+browser = QIcon(str(_BROWSER))

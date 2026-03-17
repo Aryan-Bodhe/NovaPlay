@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QSizePolicy, QStackedWidget, QMenu, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, QEvent, QPoint, QRect
-from PyQt6.QtGui import QIcon, QPalette, QColor, QFont, QAction
+from PyQt6.QtGui import QIcon, QPalette, QColor, QFont, QAction, QBrush
 
 from config.config import STATE_FILE, REWIND_ON_RESUME
 from core.state_manager import StateManager
@@ -103,7 +103,14 @@ class FullscreenOverlay(QWidget):
         # Reparent the controls bar into the overlay; make its background
         # transparent so only the wrapper's rgba shows.
         self._orig_controls_style = player_widget._controls_bar.styleSheet()
-        player_widget._controls_bar.setStyleSheet("background: transparent;")
+        player_widget._controls_bar.setStyleSheet(
+            "background: transparent;"
+            " QPushButton#icon_btn {"
+            "  background: transparent; border: none; padding: 3px; border-radius: 3px;"
+            " }"
+            " QPushButton#icon_btn:hover { background: rgba(255, 255, 255, 35); }"
+            " QPushButton#icon_btn:pressed { background: rgba(255, 255, 255, 55); }"
+        )
         wrapper_layout.addWidget(player_widget._controls_bar)
 
         # ── Auto-hide timer (t s of inactivity) ─────────────────────
@@ -231,6 +238,7 @@ class PlayerWidget(QWidget):
         self._seeking = False
         self._muted = False
         self._audio_delay_us: int = 0   # microseconds
+        self._center_state_hint: QLabel | None = None
 
         self._vlc_instance = vlc.Instance("--no-xlib")
         self._player = self._vlc_instance.media_player_new()
@@ -300,12 +308,12 @@ class PlayerWidget(QWidget):
 
         self._play_btn = QPushButton()
         self._play_btn.setIcon(play_icon)
-        self._play_btn.setIconSize(ICON_SIZE_MEDIUM)
+        self._play_btn.setIconSize(ICON_SIZE_LARGE)
         self._play_btn.setObjectName("icon_btn")
         self._play_btn.setFixedSize(32, 32)
         self._play_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._play_btn.setToolTip("Play / Pause  [Space]")
-        self._play_btn.clicked.connect(self.toggle_play)
+        self._play_btn.clicked.connect(lambda: self.toggle_play(show_overlay=False))
 
         self._seek = SeekSlider(Qt.Orientation.Horizontal)
         self._seek.setRange(0, 1000)
@@ -349,8 +357,8 @@ class PlayerWidget(QWidget):
         # self._title_lbl.setObjectName("subtitle")
         # self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        sync_lbl = QLabel("A/V:")
-        sync_lbl.setObjectName("subtitle")
+        self.sync_lbl = QLabel("A/V:")
+        self.sync_lbl.setObjectName("subtitle")
 
         self._sync_down_btn = QPushButton()
         self._sync_down_btn.setIcon(minus_icon)
@@ -483,6 +491,7 @@ class PlayerWidget(QWidget):
         # c_layout.addLayout(vlc_row)
 
         self._controls_bar = controls
+        controls.hide()
         root.addWidget(controls)
 
     def _make_blank_slate(self) -> QWidget:
@@ -537,6 +546,7 @@ class PlayerWidget(QWidget):
             self._player.set_media(media)
             self._attach_window()
             self._stack.setCurrentIndex(1)
+            self._controls_bar.show()
             self._player.play()
 
             if resume_ms > 0:
@@ -551,25 +561,29 @@ class PlayerWidget(QWidget):
         except Exception:
             log.exception("Failed to start playback: %s", path)
 
-    def toggle_play(self):
-        state = self._player.get_state()
-        if state == vlc.State.Playing:
+    def toggle_play(self, show_overlay: bool = True):
+        if self._player.is_playing():
             self._player.pause()
-            self._play_btn.setIcon(play_icon)
+            self._show_play_icon()
+            if show_overlay:
+                self._show_center_state_hint(pause_icon)
             self._save_state()
-        elif state in (vlc.State.Paused, vlc.State.Stopped):
+        else:
             self._player.play()
             # self._play_btn.setText("⏸")
-            self._play_btn.setIcon(pause_icon)
+            self._show_pause_icon()
+            if show_overlay:
+                self._show_center_state_hint(play_icon)
 
     def stop(self):
         self._save_state()
         self._player.stop()
-        # self._play_btn.setText("▶")
-        self._play_btn.setIcon(play_icon)
+
+        self._show_play_icon()
         self._seek.setValue(0)
         self._time_lbl.setText("0:00 : 0:00")
         self._stack.setCurrentIndex(0)
+        self._controls_bar.hide()
 
     def set_volume(self, vol: int):
         self._vol_slider.setValue(vol)
@@ -581,7 +595,6 @@ class PlayerWidget(QWidget):
     def toggle_mute(self):
         self._muted = not self._muted
         self._player.audio_set_mute(self._muted)
-        # self._mute_btn.setText("🔇" if self._muted else "🔊")
         self._mute_btn.setIcon(mute_icon if self._muted else volume_icon)
 
     def seek_relative(self, delta_ms: int):
@@ -695,6 +708,7 @@ class PlayerWidget(QWidget):
         # self._fs_btn.setText("⊡")
         self._fs_btn.setIcon(restore_screen_icon)
 
+        was_playing = self._player.is_playing()
         pos_ms = max(0, self._player.get_time())
         self._player.stop()  # tears down vout so set_xwindow takes effect
 
@@ -708,10 +722,14 @@ class PlayerWidget(QWidget):
             self._attach_window(self._fullscreen_win._video_frame)
             media = self._vlc_instance.media_new(str(self._current_path))
             media.add_option(f":start-time={pos_ms / 1000:.3f}")
+            if not was_playing:
+                media.add_option(":start-paused")
             self._player.set_media(media)
             self._player.play()
-            # self._play_btn.setText("⏸")
-            self._play_btn.setIcon(pause_icon)
+            if was_playing:
+                self._play_btn.setIcon(pause_icon)
+            else:
+                self._play_btn.setIcon(play_icon)
 
         QTimer.singleShot(300, _start)
 
@@ -722,11 +740,31 @@ class PlayerWidget(QWidget):
         # self._fs_btn.setText("⛶")
         self._fs_btn.setIcon(fullscreen_icon)
 
+        was_playing = self._player.is_playing()
         pos_ms = max(0, self._player.get_time())
         self._player.stop()
+        self._teardown_fullscreen_overlay()
 
-        # Move controls back to the main layout BEFORE destroying the overlay
-        # so the widget is not destroyed along with it
+        self._attach_window(self._video_frame)
+        media = self._vlc_instance.media_new(str(self._current_path))
+        media.add_option(f":start-time={pos_ms / 1000:.3f}")
+        if not was_playing:
+            media.add_option(":start-paused")
+        self._player.set_media(media)
+        self._player.play()
+        if was_playing:
+            self._play_btn.setIcon(pause_icon)
+        else:
+            self._play_btn.setIcon(play_icon)
+        self.setFocus()
+
+    def _teardown_fullscreen_overlay(self):
+        """Move controls back, close overlay, and restore windowed mode."""
+        self._is_fullscreen = False
+        self._fs_btn.setIcon(fullscreen_icon)
+
+        # Move controls back BEFORE destroying overlay, otherwise they are
+        # destroyed with the overlay parent.
         self._root_layout.addWidget(self._controls_bar)
 
         if self._fullscreen_win:
@@ -734,17 +772,44 @@ class PlayerWidget(QWidget):
             self._fullscreen_win.close()
             self._fullscreen_win = None
 
-        # Restore the main window to its normal state
         self.window().showNormal()
 
-        self._attach_window(self._video_frame)
-        media = self._vlc_instance.media_new(str(self._current_path))
-        media.add_option(f":start-time={pos_ms / 1000:.3f}")
-        self._player.set_media(media)
-        self._player.play()
-        # self._play_btn.setText("⏸")
-        self._play_btn.setIcon(pause_icon)
-        self.setFocus()
+    def _show_center_state_hint(self, icon: QIcon):
+        """Show a short-lived icon at screen center for play/pause feedback."""
+        if self._stack.currentIndex() != 1:
+            return
+
+        if self._is_fullscreen and self._fullscreen_win:
+            host = self._fullscreen_win
+            target_rect = QRect(QPoint(0, 0), host.size())
+        else:
+            host = self.window()
+            top_left = host.mapFromGlobal(self._video_frame.mapToGlobal(QPoint(0, 0)))
+            target_rect = QRect(top_left, self._video_frame.size())
+
+        if self._center_state_hint is not None:
+            self._center_state_hint.deleteLater()
+
+        hint = QLabel(host)
+        hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        # hint.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        hint.setFixedSize(84, 84)
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setStyleSheet("background: transparent;")
+        hint.setPixmap(icon.pixmap(46, 46))
+        cx = target_rect.x() + (target_rect.width() - hint.width()) // 2
+        cy = target_rect.y() + (target_rect.height() - hint.height()) // 2
+        hint.move(cx, cy)
+        hint.show()
+        hint.raise_()
+
+        self._center_state_hint = hint
+        QTimer.singleShot(550, self._hide_center_state_hint)
+
+    def _hide_center_state_hint(self):
+        if self._center_state_hint is not None:
+            self._center_state_hint.deleteLater()
+            self._center_state_hint = None
 
     def _attach_window(self, frame=None):
         if frame is None:
@@ -758,7 +823,23 @@ class PlayerWidget(QWidget):
         elif sys.platform == "darwin":
             self._player.set_nsobject(win_id)
 
+        # Let Qt handle pointer/key interactions over the embedded video
+        # surface so click-to-toggle works reliably.
+        try:
+            self._player.video_set_mouse_input(False)
+            self._player.video_set_key_input(False)
+        except Exception:
+            pass
+
     # ── Seek / volume / UI update ────────────────────────────────
+
+    def _show_play_icon(self):
+        self._play_btn.setIcon(play_icon)
+        self._play_btn.setIconSize(ICON_SIZE_LARGE)
+
+    def _show_pause_icon(self):
+        self._play_btn.setIcon(pause_icon)
+        self._play_btn.setIconSize(ICON_SIZE_LARGE)
 
     def _on_seek_press(self):
         self._dragging_seek = True
@@ -775,12 +856,12 @@ class PlayerWidget(QWidget):
 
     def _update_ui(self):
         state = self._player.get_state()
-        # self._play_btn.setText(
-        #     "⏸" if state == vlc.State.Playing else "▶"
-        # )
-        self._play_btn.setIcon(
-            pause_icon if state == vlc.State.Playing else play_icon
-        )
+        
+        if state == vlc.State.Playing:
+            self._show_pause_icon()
+        else:
+            self._show_play_icon()
+        
         if self._dragging_seek or self._seeking:
             return
         length = self._player.get_length()
@@ -806,6 +887,11 @@ class PlayerWidget(QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         """Left-click on video frame in non-fullscreen mode toggles play/pause."""
+        if not self.isVisible():
+            return False
+        if QApplication.activeModalWidget() is not None:
+            return False
+
         if (not self._is_fullscreen
                 and self._stack.currentIndex() == 1
                 and event.type() == QEvent.Type.MouseButtonPress
@@ -817,6 +903,7 @@ class PlayerWidget(QWidget):
                        self._controls_bar.size())
             if vr.contains(gp) and not cr.contains(gp):
                 self.toggle_play()
+                return True  # consume event; prevent propagation re-triggering toggle
         return False
 
     def keyPressEvent(self, event):

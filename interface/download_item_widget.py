@@ -73,6 +73,7 @@ _STATUS_TEXT = {
     "downloading": "Downloading",
     "seeding":     "Seeding",
     "paused":      "Paused",
+    "stopped":     "Stopped",
     "checking":    "Checking files…",
     "finished":    "Finished",
     "error":       "Error",
@@ -377,7 +378,7 @@ class DownloadItemWidget(QFrame):
 
     def update_state(self, state: TorrentState) -> None:
         self._paused    = (state.status == "paused")
-        self._finished  = (state.status == "finished")
+        self._finished  = (state.status in ("finished", "stopped"))
         self._save_path = state.save_path
 
         # Name (always first — _ElidedLabel repaints itself with correct width)
@@ -393,7 +394,13 @@ class DownloadItemWidget(QFrame):
             self._action_btn.setToolTip("Delete file…")
 
             self._progress.setValue(1000)
-            self._status_lbl.setText(f"✓ Finished  ·  {_fmt_bytes(state.total_size)}")
+            if state.status == "finished":
+                self._status_lbl.setText(
+                    f"✓ Finished  ·  {_fmt_bytes(state.total_size)}"
+                )
+            else:
+                size = state.downloaded_bytes or state.total_size
+                self._status_lbl.setText(f"✕ Stopped  ·  {_fmt_bytes(size)}")
 
         else:
             self._pause_btn.setVisible(True)
@@ -407,7 +414,7 @@ class DownloadItemWidget(QFrame):
                 self._pause_btn.setToolTip("Pause")
 
             self._action_btn.setIcon(stop_icon)
-            self._action_btn.setToolTip("Remove")
+            self._action_btn.setToolTip("Stop and remove from list")
 
             self._progress.setValue(int(state.progress * 1000))
 
@@ -417,8 +424,8 @@ class DownloadItemWidget(QFrame):
                     f"{pct}%  ↓ {_fmt_speed(state.download_rate)}"
                     f"  ↑ {_fmt_speed(state.upload_rate)}"
                 )
-            elif state.status == "paused" and state.progress < 1.0:
-                self._status_lbl.setText("✕ Stopped")
+            elif state.status == "paused":
+                self._status_lbl.setText("Paused")
             else:
                 self._status_lbl.setText(_STATUS_TEXT.get(state.status, state.status))
 
