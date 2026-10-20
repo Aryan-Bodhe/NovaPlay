@@ -5,14 +5,14 @@ from PyQt6.QtWidgets import (
     QStatusBar, QSplitter, QFrame, QPushButton, QGridLayout,
     QApplication, QLabel, QTabBar,
 )
-from PyQt6.QtCore import Qt, QEvent, pyqtSlot, QSize
+from PyQt6.QtCore import Qt, QEvent, QSize, pyqtSlot
 from PyQt6.QtGui import QKeySequence, QShortcut, QFont
 from PyQt6.QtWebEngineCore import QWebEngineProfile
 
-from config.config import SETTINGS_FILE
+from config.app import SETTINGS_FILE
 from models.settings_manager import SettingsManager
 from interface.file_explorer import FileExplorerPanel
-from interface.player_widget import PlayerWidget
+from interface.player.player_widget import PlayerWidget
 from interface.browser_panel import BrowserPanel
 from interface.downloads_panel import DownloadsPanel
 from interface.settings_dialog import SettingsDialog
@@ -90,11 +90,11 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         # ── Activity bar (permanent left strip) ───────────────────────────────
-        activity_bar = QFrame()
-        activity_bar.setObjectName("activity_bar")
-        activity_bar.setFixedWidth(_ACTIVITY_BAR_W)
+        self._activity_bar = QFrame()
+        self._activity_bar.setObjectName("self._activity_bar")
+        self._activity_bar.setFixedWidth(_ACTIVITY_BAR_W)
 
-        ab_layout = QVBoxLayout(activity_bar)
+        ab_layout = QVBoxLayout(self._activity_bar)
         ab_layout.setContentsMargins(0, 8, 0, 8)
         ab_layout.setSpacing(4)
 
@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
             alignment=Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
         )
 
-        main_layout.addWidget(activity_bar)
+        main_layout.addWidget(self._activity_bar)
 
         # ── Splitter: [panel stack | tabs] ────────────────────────────────────
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -366,8 +366,24 @@ class MainWindow(QMainWindow):
             title = title[:_MAX_PLAYER_TAB_TITLE - 1] + "…"
         return f"  ▶  {title}  "
 
+    # def _create_player_tab(self, title: str | None = None, make_current: bool = True) -> PlayerWidget:
+    #     player = PlayerWidget(volume=self._settings.last_volume)
+    #     insert_idx = self._player_insert_index()
+    #     tab_text = self._format_player_tab_text(title or "Player")
+    #     self._tabs.insertTab(insert_idx, player, tab_text)
+    #     self._refresh_tab_close_buttons()
+    #     self._update_tabs_surface()
+    #     if make_current:
+    #         self._tabs.setCurrentIndex(insert_idx)
+    #     return player
+
     def _create_player_tab(self, title: str | None = None, make_current: bool = True) -> PlayerWidget:
         player = PlayerWidget(volume=self._settings.last_volume)
+        
+        # --- NEW: Connect the fullscreen signal ---
+        player.fullscreen_toggled.connect(self._on_player_fullscreen_toggled)
+        # ----------------------------------------
+        
         insert_idx = self._player_insert_index()
         tab_text = self._format_player_tab_text(title or "Player")
         self._tabs.insertTab(insert_idx, player, tab_text)
@@ -683,6 +699,24 @@ class MainWindow(QMainWindow):
         settings.watch_dirs = dirs
         self._settings_mgr.save(settings)
 
+    @pyqtSlot(bool)
+    def _on_player_fullscreen_toggled(self, is_fullscreen: bool) -> None:
+        """Hide or restore main window UI elements during fullscreen playback."""
+        if is_fullscreen:
+            self._activity_bar.hide()
+            self._statusbar.hide()
+            self._tabs.tabBar().hide()
+            # Hide the side panel if it was open
+            if self._panel_visible:
+                self._panel_stack.hide()
+        else:
+            self._activity_bar.show()
+            self._statusbar.show()
+            self._tabs.tabBar().show()
+            # Restore the side panel if it was open before fullscreen
+            if self._panel_visible:
+                self._panel_stack.show()
+
     # ── Global key intercept ───────────────────────────────────────────────────
 
     def eventFilter(self, obj, event) -> bool:
@@ -736,15 +770,11 @@ class MainWindow(QMainWindow):
                 if mods == Qt.KeyboardModifier.NoModifier:
                     player_keys = (
                         Qt.Key.Key_Space, Qt.Key.Key_Left, Qt.Key.Key_Right,
+                        Qt.Key.Key_Down, Qt.Key.Key_Up,
                         Qt.Key.Key_F, Qt.Key.Key_F11, Qt.Key.Key_M,
                     )
-                    if k in player_keys or (
-                        k == Qt.Key.Key_Escape and current._is_fullscreen
-                    ):
-                        if current._is_fullscreen and current._fullscreen_win:
-                            current._fullscreen_win.keyPressEvent(event)
-                        else:
-                            current.keyPressEvent(event)
+                    if k in player_keys or (k == Qt.Key.Key_Escape and current._is_fullscreen):
+                        current.keyPressEvent(event)
                         return True
         return False
 

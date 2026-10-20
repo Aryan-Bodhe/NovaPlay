@@ -1,14 +1,14 @@
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QPushButton,
+    QApplication, QStyle, QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QPushButton,
     QLabel, QFrame, QSizePolicy, QAbstractItemView, QFileDialog,
     QStyledItemDelegate, QStyleOptionViewItem,
 )
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QFont, QColor
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot, QEvent, QRect, QRectF
 
-from config.config import VIDEO_EXT
+from config.app import VIDEO_EXT
 from core.scanner import scan_series
 from utils.logger import get_logger
 from interface.icon_store import (
@@ -176,11 +176,26 @@ class RootFolderDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         if self._is_root(index):
-            # Always trim the text rect — text can never reach the icon area
-            opt = QStyleOptionViewItem(option)
-            opt.rect = option.rect.adjusted(0, 0, -self._RESERVE, 0)
-            super().paint(painter, opt, index)
+            # 1. Draw the background using the FULL original rect
+            opt_full = QStyleOptionViewItem(option)
+            self.initStyleOption(opt_full, index)
+            widget = option.widget
+            style = widget.style() if widget else QApplication.style()
+            style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, opt_full, painter, widget)
 
+            # 2. Draw the text/icon using the SHRUNK rect
+            opt_shrunk = QStyleOptionViewItem(option)
+            self.initStyleOption(opt_shrunk, index)
+            opt_shrunk.rect = option.rect.adjusted(0, 0, -self._RESERVE, 0)
+            
+            # Strip background-drawing states so it doesn't double-draw over the full background
+            opt_shrunk.state &= ~QStyle.StateFlag.State_Selected
+            opt_shrunk.state &= ~QStyle.StateFlag.State_MouseOver
+            opt_shrunk.state &= ~QStyle.StateFlag.State_HasFocus
+            
+            super().paint(painter, opt_shrunk, index)
+
+            # 3. Draw custom hover icons
             is_hovered = (index.row() == self._hovered_row)
             is_pinned  = self._path_str(index) in self._pinned
 
@@ -188,13 +203,14 @@ class RootFolderDelegate(QStyledItemDelegate):
                 trash_r  = self._trash_rect(option.rect)
                 pin_r    = self._pin_rect(option.rect)
                 cur_pin  = pinned_icon if is_pinned else pin_icon
-                # Draw highlight behind whichever icon the cursor is over
+                
                 if self._hovered_icon == "trash":
                     self._draw_highlight(painter, trash_r)
                 elif self._hovered_icon == "pin":
                     self._draw_highlight(painter, pin_r)
+                    
                 trash_icon.paint(painter, trash_r)
-                cur_pin.paint(  painter, pin_r)
+                cur_pin.paint(painter, pin_r)
             elif is_pinned:
                 pinned_icon.paint(painter, self._pin_rect(option.rect))
         else:
@@ -302,7 +318,12 @@ class FileExplorerPanel(QWidget):
         self._tree.setIndentation(16)
         self._tree.setUniformRowHeights(False)
         self._tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        # Updated selection logic and removed focus outline
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self._tree.clicked.connect(self._on_click)
 
         # Hover-only trash icon via delegate
@@ -342,7 +363,15 @@ class FileExplorerPanel(QWidget):
 
     def eventFilter(self, obj, event):
         if obj is self._tree.viewport():
-            if event.type() == QEvent.Type.MouseMove:
+            # --- NEW: Clear selection on clicking empty space ---
+            if event.type() == QEvent.Type.MouseButtonPress:
+                pos = event.position().toPoint()
+                index = self._tree.indexAt(pos)
+                if not index.isValid():
+                    self._tree.clearSelection()
+            # ----------------------------------------------------
+            
+            elif event.type() == QEvent.Type.MouseMove:
                 pos   = event.position().toPoint()
                 index = self._tree.indexAt(pos)
                 if index.isValid() and not index.parent().isValid():

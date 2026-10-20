@@ -12,6 +12,7 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtCore import QUrl, Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QShortcut
 
+from config.browser import HOME_URL
 from models.app_settings import Bookmark
 from interface.icon_store import (
     left_arrow_icon,
@@ -27,8 +28,6 @@ from utils.adblocker import AdBlocker
 from utils.logger import get_logger
 
 log = get_logger("browser")
-
-HOME_URL = "https://www.google.com"
 
 
 class _AddressLineEdit(QLineEdit):

@@ -6,4 +6,4 @@ guessit>=3.8
 colorama>=0.4.6
 pydantic>=2.6
 # Optional torrent support (platform-dependent wheels):
-python-libtorrent
+# python-libtorrent

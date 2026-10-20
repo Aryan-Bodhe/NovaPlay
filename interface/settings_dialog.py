@@ -19,13 +19,19 @@ class _ThemeSelector(QWidget):
     """
 
     OPTIONS = [
-        ("purple", "Purple Dark (Default)"),
-        ("vscode",  "VS Code Dark"),
+        ("novaplay", "NovaPlay Dark"),
+        ("dark", "VS Code Dark"),
+        ("light", "Light"),
     ]
 
     def __init__(self, theme: str, parent=None):
         super().__init__(parent)
-        self._value = theme if any(k == theme for k, _ in self.OPTIONS) else "purple"
+        legacy_to_canonical = {
+            "purple": "novaplay",
+            "vscode": "dark",
+        }
+        normalized = legacy_to_canonical.get(theme, theme)
+        self._value = normalized if any(k == normalized for k, _ in self.OPTIONS) else "novaplay"
         self._panel: QFrame | None = None
 
         layout = QHBoxLayout(self)

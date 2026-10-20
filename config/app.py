@@ -13,10 +13,6 @@ TORRENTS_CONFIG = Path(__file__).parent / "torrents.json"
 # Video file extensions recognized by the player
 VIDEO_EXT = (".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v")
 
-# Playback thresholds (seconds)
-THRESHOLD = 60          # seconds from end to count episode as finished
-REWIND_ON_RESUME = 30   # seconds to rewind back when resuming
-
 # Logging
 LOGGING_DIR = "logs/"
 LOGGING_LIMIT_DAYS = 5

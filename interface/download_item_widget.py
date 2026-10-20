@@ -3,23 +3,23 @@ DownloadItemWidget  –  a single row in the downloads list.
 
 Collapsed (default):
   ┌──────────────────────────────────────────┐
-  │ Movie Name…               [⏸] [✕]       │
-  │ ████████░░  80%  ↓ 2.3 MB/s             │
+  │ Movie Name…               [⏸] [✕]        │
+  │ ████████░░  80%  ↓ 2.3 MB/s              │
   └──────────────────────────────────────────┘
 
 Expanded (active items only — click row body to toggle):
   ┌──────────────────────────────────────────┐
-  │ Movie Name…               [⏸] [✕]       │
-  │ ████████░░  80%  ↓ 2.3 MB/s             │
-  │  Seeds: 42   Peers: 8   ETA: 5m 30s     │
-  │  Downloaded: 6.6 GB / 8.2 GB (80%)      │
-  │  → ~/Downloads/NovaPlay               │
+  │ Movie Name…               [⏸] [✕]        │
+  │ ████████░░  80%  ↓ 2.3 MB/s              │
+  │  Seeds: 42   Peers: 8   ETA: 5m 30s      │
+  │  Downloaded: 6.6 GB / 8.2 GB (80%)       │
+  │  → ~/Downloads/NovaPlay                  │
   └──────────────────────────────────────────┘
 
 Finished (not expandable):
   ┌──────────────────────────────────────────┐
   │ Movie Name…               [🗑]           │
-  │ ✓ Finished  ·  8.2 GB                   │
+  │ ✓ Finished  ·  8.2 GB                    │
   └──────────────────────────────────────────┘
 """
 from __future__ import annotations

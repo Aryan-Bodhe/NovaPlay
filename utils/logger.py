@@ -7,7 +7,7 @@ import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
 from colorama import Fore, Style, init as colorama_init
-from config.config import LOGGING_DIR, LOGGING_LIMIT_DAYS
+from config.app import LOGGING_DIR, LOGGING_LIMIT_DAYS
 
 # Initialize colorama for Windows support
 colorama_init(autoreset=True)

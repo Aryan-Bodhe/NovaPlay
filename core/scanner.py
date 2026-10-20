@@ -1,7 +1,7 @@
 from pathlib import Path
 from guessit import guessit
 
-from config.config import VIDEO_EXT
+from config.app import VIDEO_EXT
 from models.series_data import Episode, Season, Series
 
 

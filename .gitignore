@@ -1,3 +1,114 @@
+# ============================================================
+# Python bytecode
+# ============================================================
 __pycache__/
-*.pyc
-remove_pycache.py
+*.py[cod]
+*$py.class
+
+# ============================================================
+# Virtual environments
+# ============================================================
+env/
+.venv/
+venv/
+ENV/
+
+# ============================================================
+# Python packaging and build artifacts
+# ============================================================
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+MANIFEST
+*.manifest
+*.spec.bak
+
+# ============================================================
+# PyInstaller
+# Keep novaplay.spec tracked
+# ============================================================
+*.pyinstaller
+warn-*.txt
+xref-*.html
+
+# ============================================================
+# Test, lint, type-check and coverage caches
+# ============================================================
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.dmypy.json
+.pytype/
+.ruff_cache/
+.hypothesis/
+
+# ============================================================
+# Runtime data and logs
+# ============================================================
+cache/*
+!cache/.gitkeep
+logs/*
+!logs/.gitkeep
+*.log
+
+# ============================================================
+# Application-generated files
+# ============================================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# ============================================================
+# Local configuration and secrets
+# ============================================================
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ============================================================
+# Operating system files
+# ============================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+.Trashes/
+
+# ============================================================
+# Editors and IDEs
+# ============================================================
+.vscode/
+
+# ============================================================
+# Linux packages and generated binaries
+# ============================================================
+*.deb
+*.rpm
+*.AppImage
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+core
+core.*

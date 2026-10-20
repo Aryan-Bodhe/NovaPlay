@@ -3,6 +3,8 @@ Centralised theme definitions for NovaPlay.
 Each theme is a QSS string. Add new themes to THEMES dict.
 """
 
+from themes.loader import load_theme
+
 # ── VSCode Dark theme (default) ───────────────────────────────────────────────
 _VSCODE = """
 QWidget {
@@ -452,4 +454,12 @@ PURPLE_THEME = _PURPLE
 
 
 def get_theme(name: str) -> str:
-    return THEMES.get(name, _PURPLE)
+    aliases = {
+        "purple": "novaplay",
+        "vscode": "dark",
+    }
+    resolved = aliases.get(name, name)
+    try:
+        return load_theme(resolved)  # type: ignore[arg-type]
+    except Exception:
+        return _PURPLE

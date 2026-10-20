@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from config.config import TORRENTS_CONFIG
+from config.app import TORRENTS_CONFIG
 from utils.logger import get_logger
 
 log = get_logger("torrent_engine")
